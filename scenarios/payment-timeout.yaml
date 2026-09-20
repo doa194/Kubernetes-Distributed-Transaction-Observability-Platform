@@ -1,0 +1,27 @@
+# PaymentService never answers: all attempts time out, the order fails and earlier steps are undone.
+schemaVersion: 1
+id: payment-timeout
+title: Payment timeout
+description: >
+  PaymentService holds every authorization request until the caller gives up. OrderService makes
+  three attempts, then fails the order with 504, voids the (never recorded) payment and releases
+  the stock. No authorization is recorded, and the trace shows three attempts and the compensation.
+category: application-fault
+faults:
+  - service: payment-service
+    operation: payment.authorize
+    mode: timeout
+    ttlSeconds: 180
+workload:
+  # Three orders make nine attempts: below the circuit breaker's minimum of ten calls.
+  - profile: concurrent
+    requests: 3
+    concurrency: 3
+expect:
+  application:
+    statuses: { 504: { all: true } }
+    states: { PaymentFailed: { all: true } }
+    compensation: [VoidPayment, ReleaseInventory]
+    authorizationsPerOrder: 0
+  telemetry:
+    contract: payment-timeout

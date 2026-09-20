@@ -1,0 +1,38 @@
+# Local values for the maintained kong/ingress chart: Kong Ingress Controller + DB-less Kong Gateway.
+# Image tags come from deploy/versions.yaml (passed by platformctl).
+controller:
+  podLabels:
+    txplatform.io/network-identity: kong-controller
+  ingressController:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+
+gateway:
+  podLabels:
+    txplatform.io/network-identity: kong-proxy
+  proxy:
+    # Reached from the workstation through the kind port mapping 127.0.0.1:8443 -> node port 30443.
+    type: NodePort
+    http:
+      # Only HTTPS is exposed; there is no plaintext listener.
+      enabled: false
+    tls:
+      enabled: true
+      servicePort: 443
+      containerPort: 8443
+      nodePort: 30443
+  # Kong Manager (the admin web UI) is not used: configuration comes only from Kubernetes resources
+  # through the ingress controller, so its listener and NodePort Service are not created.
+  manager:
+    enabled: false
+  env:
+    # Record the request span and the upstream (balancer) span only; "all" would add a span per plugin phase.
+    tracing_instrumentations: request,balancer
+    # Every request is traced at the edge; the Jaeger Collector decides later what to keep.
+    tracing_sampling_rate: "1.0"
+    # Do not advertise the Kong version in response headers.
+    headers: latency_tokens,X-Kong-Request-Id
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 512Mi }

@@ -1,0 +1,18 @@
+# The gateway rejects request bodies above its size limit.
+schemaVersion: 1
+id: oversized-request
+title: Oversized request
+description: >
+  Orders with a 32 KB body exceed Kong's 16 KB request size limit and are answered with 413 by
+  Kong itself. OrderService never sees them, and span metrics count every rejection.
+category: edge
+workload:
+  - profile: concurrent
+    requests: 5
+    concurrency: 5
+    order: oversized
+expect:
+  application:
+    statuses: { 413: { all: true } }
+  telemetry:
+    contract: oversized-request

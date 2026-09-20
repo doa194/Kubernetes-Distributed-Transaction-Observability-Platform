@@ -1,0 +1,5 @@
+# Files that end up inside Linux containers must keep Unix line endings,
+# even when the repository is checked out on Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

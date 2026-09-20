@@ -1,0 +1,78 @@
+{{- /*
+Application-owned edge configuration: the public route to OrderService and its edge policies.
+The platform owns the Gateway; the application decides which paths it exposes and how they are protected.
+*/}}
+{{- if .Values.edge.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: order-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: order-service
+    app.kubernetes.io/part-of: txplatform
+  annotations:
+    konghq.com/plugins: order-api-correlation-id,order-api-rate-limiting,order-api-request-size-limiting
+    konghq.com/strip-path: "false"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.edge.gatewayName }}
+      namespace: {{ .Values.edge.gatewayNamespace }}
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /orders
+      backendRefs:
+        - name: order-service
+          port: {{ .Values.ports.business }}
+---
+# Human-readable request id for operators; kept when the client sends a valid one, generated otherwise.
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: order-api-correlation-id
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+plugin: correlation-id
+config:
+  header_name: X-Correlation-ID
+  generator: uuid
+  echo_downstream: true
+---
+# Protects OrderService from excessive traffic. The "local" policy counts per Kong pod, which is exact
+# with one Kong replica and needs no Redis or database.
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: order-api-rate-limiting
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+plugin: rate-limiting
+config:
+  second: {{ .Values.edge.rateLimit.perSecond }}
+  minute: {{ .Values.edge.rateLimit.perMinute }}
+  limit_by: ip
+  policy: local
+  fault_tolerant: true
+  hide_client_headers: false
+---
+# Rejects oversized bodies before they reach OrderService.
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: order-api-request-size-limiting
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+plugin: request-size-limiting
+config:
+  allowed_payload_size: {{ .Values.edge.maxRequestKilobytes }}
+  size_unit: kilobytes
+  require_content_length: false
+{{- end }}

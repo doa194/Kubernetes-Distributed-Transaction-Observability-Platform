@@ -1,0 +1,6 @@
+apiVersion: v2
+name: transaction-services
+description: The five .NET services of the order transaction, their network policies and their gateway route.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

@@ -1,0 +1,31 @@
+# PaymentService answers slowly but within its timeout: orders still complete, and the traces
+# must show that payment caused the delay.
+schemaVersion: 1
+id: slow-payment
+title: Slow payment
+description: >
+  PaymentService waits 1.2 seconds before authorizing, which is below OrderService's 1.5 second
+  attempt timeout. Orders complete without retries. The traces are kept by the Collector's
+  latency rule (no debug flag) and must show payment as the dominant part of the latency.
+category: application-fault
+faults:
+  - service: payment-service
+    operation: payment.authorize
+    mode: latency
+    delayMs: 1200
+    phase: before-effect
+    ttlSeconds: 180
+workload:
+  - profile: concurrent
+    requests: 5
+    concurrency: 5
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+    authorizationsPerOrder: 1
+  telemetry:
+    contract: slow-payment
+    parameters:
+      minShare: 0.6
+      minTraceMs: 1000

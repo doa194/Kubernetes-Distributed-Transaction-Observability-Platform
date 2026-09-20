@@ -1,0 +1,173 @@
+{{- /*
+Keycloak in production mode with its embedded file database on temporary storage.
+The realm is imported at every start, so the identity setup is always exactly what this chart
+declares. Client secrets reach the realm file through environment variables from a Secret.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: txplatform
+data:
+  {{ .Values.realm }}-realm.json: |-
+{{ .Files.Get "files/transaction-platform-realm.json" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: txplatform
+    app.kubernetes.io/component: identity
+spec:
+  replicas: 1
+  # The embedded database cannot be shared, so an old and a new pod must never run together.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/part-of: txplatform
+        app.kubernetes.io/component: identity
+        txplatform.io/network-identity: keycloak
+      annotations:
+        checksum/realm: {{ .Files.Get "files/transaction-platform-realm.json" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 0
+        fsGroup: 0
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: {{ .Values.image }}
+          imagePullPolicy: IfNotPresent
+          args: ["start", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.admin }}, key: username } }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.admin }}, key: password } }
+            - name: SCENARIO_RUNNER_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.clients }}, key: scenario-runner } }
+            - name: ORDER_READER_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.clients }}, key: order-reader } }
+            # Local simplification: embedded database, recreated with the pod.
+            - name: KC_DB
+              value: dev-file
+            # Tokens always name the public URL as issuer, however Keycloak was reached.
+            - name: KC_HOSTNAME
+              value: {{ .Values.publicUrl | quote }}
+            # In-cluster callers (OrderService) use the internal URL for keys and discovery.
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HTTP_PORT
+              value: "8080"
+            - name: KC_HTTPS_PORT
+              value: "8443"
+            - name: KC_HTTPS_CERTIFICATE_FILE
+              value: /opt/keycloak/conf/tls/tls.crt
+            - name: KC_HTTPS_CERTIFICATE_KEY_FILE
+              value: /opt/keycloak/conf/tls/tls.key
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_LOG_CONSOLE_OUTPUT
+              value: json
+            - name: JAVA_OPTS_KC_HEAP
+              value: "-XX:MaxRAMPercentage=65 -XX:InitialRAMPercentage=25"
+          ports:
+            - name: https
+              containerPort: 8443
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # The management interface uses HTTPS because the server has a certificate; kubelet does not verify it.
+          startupProbe:
+            httpGet: { path: /health/started, port: management, scheme: HTTPS }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health/ready, port: management, scheme: HTTPS }
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health/live, port: management, scheme: HTTPS }
+            periodSeconds: 20
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /opt/keycloak/data
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+            - name: tls
+              mountPath: /opt/keycloak/conf/tls
+              readOnly: true
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: realm
+          configMap:
+            name: keycloak-realm
+        - name: tls
+          secret:
+            secretName: {{ .Values.secrets.tls }}
+---
+# Internal HTTP endpoint for in-cluster callers (signing keys and discovery).
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: txplatform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Public HTTPS endpoint, reachable from the workstation at https://localhost:9443 only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-public
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: txplatform
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      nodePort: {{ .Values.nodePort }}

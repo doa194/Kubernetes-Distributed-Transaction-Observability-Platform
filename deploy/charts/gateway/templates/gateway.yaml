@@ -1,0 +1,43 @@
+{{- /*
+Kubernetes Gateway API resources for Kong. The GatewayClass is "unmanaged": the Kong Ingress
+Controller configures an existing Kong deployment instead of creating one per Gateway.
+*/}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gatewayClassName }}
+  annotations:
+    konghq.com/gatewayclass-unmanaged: "true"
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  controllerName: konghq.com/kic-gateway-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gatewayName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  gatewayClassName: {{ .Values.gatewayClassName }}
+  listeners:
+    # The only listener: HTTPS with TLS terminated at Kong. Internal traffic to OrderService is HTTP.
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ .Values.tlsSecretName }}
+      allowedRoutes:
+        kinds:
+          - kind: HTTPRoute
+        # Routes may attach only from namespaces the platform labeled for gateway access.
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              {{- toYaml .Values.routeNamespaceLabel | nindent 14 }}

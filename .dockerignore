@@ -1,0 +1,14 @@
+# Only the .NET sources and build settings are needed to build service images.
+**/bin/
+**/obj/
+.git/
+.local/
+.runs/
+.tools/
+.venv/
+automation/
+deploy/
+docs/
+scenarios/
+tests/
+*.md

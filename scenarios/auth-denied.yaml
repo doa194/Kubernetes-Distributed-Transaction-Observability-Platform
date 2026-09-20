@@ -1,0 +1,32 @@
+# Missing, forged and insufficient credentials are rejected before any business work happens.
+schemaVersion: 1
+id: auth-denied
+title: Authentication and authorization denied
+description: >
+  Requests without a token and with a token whose signature was altered get 401. A valid token
+  without the orders.write permission gets 403. No dependency is ever called, and span metrics
+  count every rejection.
+category: security
+workload:
+  - profile: concurrent
+    requests: 5
+    concurrency: 5
+    identity: none
+    label: no token
+  - profile: concurrent
+    requests: 5
+    concurrency: 5
+    identity: tampered
+    label: forged signature
+  - profile: concurrent
+    requests: 5
+    concurrency: 5
+    identity: order-reader
+    label: read-only client
+expect:
+  application:
+    statuses:
+      401: { exactly: 10 }
+      403: { exactly: 5 }
+  telemetry:
+    contract: auth-denied

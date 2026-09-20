@@ -1,0 +1,97 @@
+{{- /*
+Allow rules for the application services on top of the namespace's deny-all baseline.
+Policies select pods only by txplatform.io/network-identity. Management ports (health, faults)
+get no ingress rule at all, so no pod can reach them; kubelet probes from the pod's own node are
+always allowed by Kubernetes.
+*/}}
+{{- $downstream := list "inventory-service" "fraud-service" "payment-service" "shipping-service" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: order-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: order-service
+    app.kubernetes.io/part-of: txplatform
+spec:
+  podSelector:
+    matchLabels:
+      txplatform.io/network-identity: order-service
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Only the Kong proxy may call the public Order API.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-system
+          podSelector:
+            matchLabels:
+              txplatform.io/network-identity: kong-proxy
+      ports:
+        - port: http
+  egress:
+    - to:
+        {{- range $downstream }}
+        - podSelector:
+            matchLabels:
+              txplatform.io/network-identity: {{ . }}
+        {{- end }}
+      ports:
+        - port: {{ .Values.ports.business }}
+    # Signing keys and discovery document from Keycloak's internal port.
+    - to:
+        - podSelector:
+            matchLabels:
+              txplatform.io/network-identity: keycloak
+      ports:
+        - port: 8080
+    {{- if .Values.telemetry.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              txplatform.io/network-identity: jaeger-collector
+      ports:
+        - port: 4317
+    {{- end }}
+{{- range $downstream }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ . }}
+    app.kubernetes.io/part-of: txplatform
+spec:
+  podSelector:
+    matchLabels:
+      txplatform.io/network-identity: {{ . }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Private services accept calls from OrderService only.
+    - from:
+        - podSelector:
+            matchLabels:
+              txplatform.io/network-identity: order-service
+      ports:
+        - port: http
+  {{- if $.Values.telemetry.enabled }}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              txplatform.io/network-identity: jaeger-collector
+      ports:
+        - port: 4317
+  {{- else }}
+  egress: []
+  {{- end }}
+{{- end }}

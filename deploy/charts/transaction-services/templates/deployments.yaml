@@ -1,0 +1,166 @@
+{{- /*
+One Deployment per service. Business traffic uses the "http" port; probes and operator tools use
+the "management" port, which no Service exposes. Pods run with the restricted Pod Security profile.
+*/}}
+{{- range $name, $service := .Values.services }}
+{{- $ctx := dict "root" $ "name" $name "service" $service }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "txs.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $service.replicas }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # A new pod must be ready before an old one stops, so a rollout never drops capacity.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "txs.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "txs.labels" $ctx | nindent 8 }}
+        # NetworkPolicies select pods by this label only (see network-policies.yaml).
+        txplatform.io/network-identity: {{ $name }}
+      {{- if index $.Values.seed $name }}
+      annotations:
+        # Restarts pods when their seed data changes.
+        checksum/seed: {{ index $.Values.seed $name | toJson | sha256sum }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if $service.spreadAcrossNodes }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              {{- include "txs.selectorLabels" $ctx | nindent 14 }}
+          # Only pods of the same revision count, so rolling updates can still place surge pods.
+          matchLabelKeys:
+            - pod-template-hash
+      {{- end }}
+      containers:
+        - name: app
+          image: "{{ $.Values.image.repository }}/{{ $name }}:{{ $service.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $.Values.ports.business }}
+            - name: management
+              containerPort: {{ $.Values.ports.management }}
+          env:
+            # Pod facts from the Kubernetes Downward API, used as trace resource attributes.
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: POD_UID
+              valueFrom: { fieldRef: { fieldPath: metadata.uid } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            {{- if $.Values.telemetry.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $.Values.telemetry.otlpEndpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            # Export finished spans every second so tail sampling sees complete traces quickly.
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "1000"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=txplatform,deployment.environment.name={{ $.Values.environment }},k8s.namespace.name=$(POD_NAMESPACE),k8s.deployment.name={{ $name }},k8s.pod.name=$(POD_NAME),k8s.pod.uid=$(POD_UID),k8s.node.name=$(NODE_NAME),service.instance.id=$(POD_UID)"
+            {{- else }}
+            - name: Telemetry__Enabled
+              value: "false"
+            {{- end }}
+            - name: Ports__Business
+              value: {{ $.Values.ports.business | quote }}
+            - name: Ports__Management
+              value: {{ $.Values.ports.management | quote }}
+            - name: Faults__Enabled
+              value: {{ $.Values.faults.enabled | quote }}
+            - name: SERVICE_VERSION
+              value: {{ $service.tag | quote }}
+            {{- if eq $name "order-service" }}
+            - name: Auth__Issuer
+              value: {{ $.Values.auth.issuer | quote }}
+            - name: Auth__Audience
+              value: {{ $.Values.auth.audience | quote }}
+            - name: Auth__MetadataAddress
+              value: {{ $.Values.auth.metadataAddress | quote }}
+            - name: Auth__RequireHttpsMetadata
+              value: {{ $.Values.auth.requireHttpsMetadata | quote }}
+            - name: ForwardedHeaders__TrustedNetwork
+              value: {{ $.Values.forwardedHeaders.trustedNetwork | quote }}
+            - name: Dependencies__InventoryBaseUrl
+              value: "http://inventory-service:{{ $.Values.ports.business }}"
+            - name: Dependencies__FraudBaseUrl
+              value: "http://fraud-service:{{ $.Values.ports.business }}"
+            - name: Dependencies__PaymentBaseUrl
+              value: "http://payment-service:{{ $.Values.ports.business }}"
+            - name: Dependencies__ShippingBaseUrl
+              value: "http://shipping-service:{{ $.Values.ports.business }}"
+            {{- end }}
+            {{- range $key, $value := $service.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $service.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet: { path: /health/live, port: management }
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /health/ready, port: management }
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: { path: /health/live, port: management }
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ $.Values.preStopSleepSeconds }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if index $.Values.seed $name }}
+            - name: seed
+              mountPath: /etc/txplatform
+              readOnly: true
+            {{- end }}
+      volumes:
+        # The root filesystem is read-only; .NET still needs a small writable /tmp.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- if index $.Values.seed $name }}
+        - name: seed
+          configMap:
+            name: {{ $name }}-seed
+        {{- end }}
+{{- end }}

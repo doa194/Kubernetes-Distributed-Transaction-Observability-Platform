@@ -1,0 +1,28 @@
+{{- /* ClusterIP Services expose only the business port; the management port stays pod-local. */}}
+{{- range $name, $service := .Values.services }}
+{{- $ctx := dict "root" $ "name" $name "service" $service }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "txs.labels" $ctx | nindent 4 }}
+  {{- if and (eq $name "order-service") $.Values.edge.enabled }}
+  annotations:
+    # Read by the Kong Ingress Controller for the upstream it creates for this Service.
+    konghq.com/retries: {{ $.Values.edge.upstreamRetries | quote }}
+    konghq.com/connect-timeout: "2000"
+    konghq.com/read-timeout: {{ $.Values.edge.upstreamTimeoutMs | quote }}
+    konghq.com/write-timeout: {{ $.Values.edge.upstreamTimeoutMs | quote }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "txs.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $.Values.ports.business }}
+      targetPort: http
+{{- end }}

@@ -1,0 +1,30 @@
+# Local-only settings for the application services.
+environment: local
+
+# Fault injection exists for experiments and is enabled only in this local environment.
+faults:
+  enabled: true
+
+telemetry:
+  enabled: true
+
+edge:
+  enabled: true
+
+seed:
+  order-service:
+    Catalog:
+      Currency: EUR
+      Items:
+        - { Sku: SKU-1001, UnitPrice: 12.50 }
+        - { Sku: SKU-1002, UnitPrice: 49.90 }
+        - { Sku: SKU-2001, UnitPrice: 950.00 }
+        - { Sku: SKU-9000, UnitPrice: 5.00 }
+  inventory-service:
+    Stock:
+      Items:
+        - { Sku: SKU-1001, Available: 1000000 }
+        - { Sku: SKU-1002, Available: 1000000 }
+        - { Sku: SKU-2001, Available: 1000000 }
+        # Never in stock: produces a deterministic "insufficient stock" rejection.
+        - { Sku: SKU-9000, Available: 0 }

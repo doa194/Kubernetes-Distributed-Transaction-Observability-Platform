@@ -1,0 +1,74 @@
+# Local values for the maintained opensearch/opensearch chart: one small node for trace storage.
+# Local simplifications: a single node with no replicas, and no security plugin. Only the Jaeger
+# Collector, Jaeger Query and the retention job may connect (enforced by NetworkPolicy).
+fullnameOverride: opensearch-traces
+masterService: opensearch-traces
+clusterName: opensearch-traces
+nodeGroup: traces
+singleNode: true
+replicas: 1
+
+labels:
+  txplatform.io/network-identity: opensearch
+
+opensearchJavaOpts: "-Xms768m -Xmx768m"
+resources:
+  requests: { cpu: 500m, memory: 1536Mi }
+  limits: { cpu: "2", memory: 1536Mi }
+# The init container only copies configuration files.
+initResources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { cpu: 100m, memory: 64Mi }
+
+persistence:
+  enabled: true
+  size: 5Gi
+  # The chart's root "chown" init container is not needed: local-path volumes are created
+  # world-writable, and a root container would break the namespace's restricted Pod Security level.
+  enableInitChown: false
+
+# Restricted Pod Security: non-root, no privilege escalation, no capabilities, default seccomp profile.
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Memory-mapped storage stays off, so the Docker Desktop VM needs no vm.max_map_count change.
+sysctlInit:
+  enabled: false
+
+securityConfig:
+  enabled: false
+
+config:
+  opensearch.yml: |
+    cluster.name: opensearch-traces
+    network.host: 0.0.0.0
+    plugins.security.disabled: true
+    node.store.allow_mmap: false
+
+extraEnvs:
+  - name: DISABLE_INSTALL_DEMO_CONFIG
+    value: "true"
+  - name: DISABLE_SECURITY_PLUGIN
+    value: "true"
+
+# Ready only when the node reports a usable cluster state, not merely an open port.
+readinessProbe:
+  # Helm merges probe maps, so the chart's default TCP check must be removed explicitly.
+  tcpSocket: null
+  httpGet:
+    path: /_cluster/health?local=true
+    port: 9200
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3

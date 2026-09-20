@@ -1,0 +1,31 @@
+# One replica reports itself unready: Kubernetes must stop routing new connections to it.
+schemaVersion: 1
+id: readiness-loss
+title: Readiness loss of one replica
+description: >
+  One of the two FraudService pods starts failing its readiness probe. Kubernetes removes it from
+  the Service endpoints, and once OrderService's pooled connections expire no request reaches that
+  pod any more. Orders keep completing without errors throughout.
+category: kubernetes-fault
+faults:
+  - service: fraud-service
+    operation: readiness
+    mode: readiness-loss
+    replicas: one
+    # A readiness fault affects the whole pod, so it cannot be limited to this run's requests.
+    scoped: false
+    ttlSeconds: 300
+workload:
+  - profile: steady
+    ratePerSecond: 4
+    durationSeconds: 90
+    debug: true
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+  telemetry:
+    contract: readiness-loss
+    parameters:
+      # Probe failure detection (up to 10 s) plus OrderService's 30 s pooled connection lifetime.
+      connectionLifetimeSeconds: 50

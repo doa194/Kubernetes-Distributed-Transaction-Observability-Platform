@@ -1,0 +1,23 @@
+# A business rejection is not a technical error: it must not be marked as one.
+schemaVersion: 1
+id: fraud-rejection
+title: Fraud rejection
+description: >
+  Orders above FraudService's amount limit are rejected by the real risk rule (no injected fault).
+  They fail with 422, the reserved stock is released, payment is never called, and the traces
+  are not marked as errors.
+category: application-fault
+workload:
+  - profile: concurrent
+    requests: 3
+    concurrency: 3
+    order: high-risk
+    debug: true
+expect:
+  application:
+    statuses: { 422: { all: true } }
+    states: { FraudFailed: { all: true } }
+    compensation: [ReleaseInventory]
+    authorizationsPerOrder: 0
+  telemetry:
+    contract: fraud-rejection

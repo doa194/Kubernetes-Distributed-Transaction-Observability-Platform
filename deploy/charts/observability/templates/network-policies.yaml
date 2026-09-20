@@ -1,0 +1,144 @@
+{{- /*
+Observability namespace rules on top of its deny-all baseline:
+- the Collector's OTLP ports accept spans only from the workloads that produce them,
+- OpenSearch accepts connections only from the Collector, Query and the retention job,
+- Prometheus scrapes only Jaeger's metrics ports (including the Collector's span metrics), and only
+  Query may read from Prometheus.
+Query API/UI and Prometheus UI are reached by port-forwarding, which NetworkPolicies do not affect.
+*/}}
+{{- define "observability.identity" -}}
+podSelector:
+  matchLabels:
+    txplatform.io/network-identity: {{ . }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  {{- include "observability.identity" "jaeger-collector" | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.otlpProducers.grpc.namespace }}
+          podSelector:
+            matchExpressions:
+              - key: txplatform.io/network-identity
+                operator: In
+                values: {{ toJson .Values.otlpProducers.grpc.identities }}
+      ports:
+        - port: 4317
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.otlpProducers.http.namespace }}
+          podSelector:
+            matchExpressions:
+              - key: txplatform.io/network-identity
+                operator: In
+                values: {{ toJson .Values.otlpProducers.http.identities }}
+      ports:
+        - port: 4318
+    - from:
+        - {{- include "observability.identity" "prometheus" | nindent 10 }}
+      ports:
+        - port: 8888
+        - port: 8889
+  egress:
+    - to:
+        - {{- include "observability.identity" "opensearch" | nindent 10 }}
+      ports:
+        - port: 9200
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-query
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  {{- include "observability.identity" "jaeger-query" | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{- include "observability.identity" "prometheus" | nindent 10 }}
+      ports:
+        - port: 8888
+  egress:
+    - to:
+        - {{- include "observability.identity" "opensearch" | nindent 10 }}
+      ports:
+        - port: 9200
+    - to:
+        - {{- include "observability.identity" "prometheus" | nindent 10 }}
+      ports:
+        - port: 9090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opensearch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  {{- include "observability.identity" "opensearch" | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{- include "observability.identity" "jaeger-collector" | nindent 10 }}
+        - {{- include "observability.identity" "jaeger-query" | nindent 10 }}
+        - {{- include "observability.identity" "jaeger-index-cleaner" | nindent 10 }}
+      ports:
+        - port: 9200
+  # A single node talks to nobody; DNS stays allowed by the namespace baseline.
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  {{- include "observability.identity" "prometheus" | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{- include "observability.identity" "jaeger-query" | nindent 10 }}
+      ports:
+        - port: 9090
+  egress:
+    - to:
+        - {{- include "observability.identity" "jaeger-collector" | nindent 10 }}
+        - {{- include "observability.identity" "jaeger-query" | nindent 10 }}
+      ports:
+        - port: 8888
+    - to:
+        - {{- include "observability.identity" "jaeger-collector" | nindent 10 }}
+      ports:
+        - port: 8889
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jaeger-index-cleaner
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  {{- include "observability.identity" "jaeger-index-cleaner" | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - {{- include "observability.identity" "opensearch" | nindent 10 }}
+      ports:
+        - port: 9200

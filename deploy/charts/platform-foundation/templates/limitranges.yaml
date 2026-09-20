@@ -1,0 +1,18 @@
+{{- /* Default container resources per namespace, used only when a container declares none. */}}
+{{- range .Values.namespaces }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-container-resources
+  namespace: {{ .name }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        {{- toYaml $.Values.defaultContainerResources.requests | nindent 8 }}
+      default:
+        {{- toYaml $.Values.defaultContainerResources.limits | nindent 8 }}
+{{- end }}

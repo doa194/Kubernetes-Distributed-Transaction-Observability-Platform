@@ -1,0 +1,48 @@
+# Single source of truth for every pinned version used by the platform.
+# The platform CLI reads this file and passes the values to kind, Helm and Docker,
+# so charts and scripts never hard-code their own versions.
+schemaVersion: 1
+
+tools:
+  kind: v0.33.0
+  helm: v4
+  kubectlMinor: "1.36"
+  dotnetSdkMajor: "10"
+  pythonMinimum: "3.12"
+
+kubernetes:
+  # KIC 3.5 supports Kubernetes 1.29-1.36, so the cluster stays on 1.36 even though
+  # kind v0.33 defaults to 1.37. Kind requires the digest to guarantee a matching image.
+  nodeImage: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+
+gatewayApi:
+  version: v1.3.0
+  standardCrds: deploy/crds/gateway-api-v1.3.0-standard-install.yaml
+
+charts:
+  kong:
+    repository: https://charts.konghq.com
+    chart: ingress
+    version: 0.24.0
+  opensearch:
+    repository: https://opensearch-project.github.io/helm-charts/
+    chart: opensearch
+    version: 3.8.0
+  prometheus:
+    repository: https://prometheus-community.github.io/helm-charts
+    chart: prometheus
+    version: 29.30.0
+
+images:
+  # Kong stopped publishing open-source Gateway images after 3.9.3.
+  kongGateway: kong:3.9.3
+  kongIngressController: kong/kubernetes-ingress-controller:3.5.13
+  keycloak: quay.io/keycloak/keycloak:26.7.4
+  jaeger: jaegertracing/jaeger:2.21.0
+  jaegerIndexCleaner: jaegertracing/jaeger-es-index-cleaner:2.21.0
+  opensearch: opensearchproject/opensearch:3.8.0
+  prometheus: quay.io/prometheus/prometheus:v3.14.0
+  # Small image used by network and storage probe pods during validation.
+  probe: busybox:1.37.0
+  dotnetSdk: mcr.microsoft.com/dotnet/sdk:10.0
+  dotnetRuntime: mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled

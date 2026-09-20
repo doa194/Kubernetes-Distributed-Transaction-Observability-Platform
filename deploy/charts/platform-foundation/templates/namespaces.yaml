@@ -1,0 +1,18 @@
+{{- /* Creates the three platform namespaces with their Pod Security Admission labels. */}}
+{{- range .Values.namespaces }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .name }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+    app.kubernetes.io/managed-by: {{ $.Release.Service }}
+    pod-security.kubernetes.io/enforce: {{ .podSecurity.enforce }}
+    pod-security.kubernetes.io/warn: {{ .podSecurity.warn }}
+    pod-security.kubernetes.io/audit: {{ .podSecurity.audit }}
+    {{- if .gatewayAccess }}
+    # The Gateway only accepts routes from namespaces carrying this label.
+    txplatform.io/gateway-access: "true"
+    {{- end }}
+{{- end }}

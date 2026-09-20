@@ -1,0 +1,21 @@
+# Baseline: the happy path must complete and produce a complete, correctly ordered trace.
+schemaVersion: 1
+id: normal-order
+title: Normal order
+description: >
+  Five orders run through Kong, OrderService and all four dependencies. Every order completes,
+  payment is authorized exactly once, and every trace shows the full, correctly ordered flow.
+category: workload
+workload:
+  - profile: concurrent
+    requests: 5
+    concurrency: 1
+    # Ordinary traces are only sampled; the debug flag keeps every trace of this run.
+    debug: true
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+    authorizationsPerOrder: 1
+  telemetry:
+    contract: normal-order

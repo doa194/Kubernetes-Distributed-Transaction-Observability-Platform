@@ -1,0 +1,36 @@
+# Python project for the platform automation: `platformctl` manages the platform
+# lifecycle and `scenarioctl` runs fault and workload scenarios. The code lives in
+# automation/src so the repository root stays focused on the platform itself.
+[project]
+name = "txplatform-automation"
+version = "1.0.0"
+description = "Lifecycle, validation and scenario automation for the Kubernetes Distributed Transaction Observability Platform"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28",
+    "pydantic>=2.11",
+    "pyyaml>=6.0.2",
+    "kubernetes>=33.1",
+    "cryptography>=45",
+]
+
+[project.scripts]
+platformctl = "txplatform.platform_cli:main"
+scenarioctl = "txplatform.scenario_cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.4"]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "automation/src"
+module-name = "txplatform"
+
+[tool.pytest.ini_options]
+testpaths = ["automation/tests"]
+markers = ["e2e: end-to-end tests that need the running platform"]
+# E2E tests need a deployed platform, so they only run when selected with `-m e2e`.
+addopts = "-m 'not e2e'"

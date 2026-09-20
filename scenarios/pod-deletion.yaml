@@ -1,0 +1,33 @@
+# The only PaymentService pod is deleted under load: the traces must show which pod served which
+# request, and explain the failures during the replacement window.
+schemaVersion: 1
+id: pod-deletion
+title: Pod deletion under load
+description: >
+  The single PaymentService pod is deleted ten seconds into a 40 second steady workload. The
+  pre-stop delay keeps the old pod serving while its replacement starts, so in practice every order
+  completes; because one replica gives no guarantee, a bounded number of failures is tolerated.
+  Kept traces must name both the deleted and the replacement pod, and any failed request must be
+  traced as well.
+category: kubernetes-fault
+kubernetes:
+  - action: delete-pod
+    workload: payment-service
+    atSeconds: 10
+workload:
+  - profile: steady
+    ratePerSecond: 2
+    durationSeconds: 40
+    debug: true
+expect:
+  application:
+    # A single replica cannot hide its own replacement, so a bounded number of failures is expected.
+    statuses:
+      201: { min: 50 }
+      503: { max: 30 }
+      504: { max: 10 }
+    states:
+      Completed: { min: 50 }
+      PaymentFailed: { max: 30 }
+  telemetry:
+    contract: pod-deletion

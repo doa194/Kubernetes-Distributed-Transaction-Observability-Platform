@@ -1,0 +1,78 @@
+# Local values for the maintained prometheus-community/prometheus chart.
+# Prometheus has a deliberately narrow role here: it stores the RED metrics Jaeger derives from spans
+# (for the Monitor tab) and Jaeger's own health metrics. It is not a general cluster monitoring stack,
+# so every optional component is off and scrape targets are listed explicitly.
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+# Static targets need no access to the Kubernetes API.
+rbac:
+  create: false
+
+# Both containers of the server pod follow the restricted Pod Security level.
+configmapReload:
+  prometheus:
+    resources:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits: { cpu: 100m, memory: 64Mi }
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+
+server:
+  podLabels:
+    txplatform.io/network-identity: prometheus
+  securityContext:
+    runAsUser: 65534
+    runAsGroup: 65534
+    runAsNonRoot: true
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  retention: 2d
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+  service:
+    servicePort: 9090
+  persistentVolume:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 768Mi }
+
+# The chart's default scrape jobs (Kubernetes service discovery) are removed; only the explicit
+# targets below are scraped.
+scrapeConfigs: null
+
+serverFiles:
+  prometheus.yml:
+    rule_files: []
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:9090"]
+      - job_name: jaeger-collector
+        static_configs:
+          - targets: ["jaeger-collector.observability.svc.cluster.local:8888"]
+      - job_name: jaeger-query
+        static_configs:
+          - targets: ["jaeger-query.observability.svc.cluster.local:8888"]
+      # RED metrics derived from spans, read by Jaeger's Monitor tab and the scenario checks.
+      - job_name: span-metrics
+        static_configs:
+          - targets: ["jaeger-collector.observability.svc.cluster.local:8889"]

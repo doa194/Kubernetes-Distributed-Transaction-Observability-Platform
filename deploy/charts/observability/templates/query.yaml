@@ -1,0 +1,104 @@
+{{- /*
+Jaeger Query: the trace API (api_v3) and UI, reading from OpenSearch. It is reached only through
+kubectl port-forward (see `platformctl ui jaeger`); no Service type exposes it outside the cluster.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-query-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: jaeger-query
+    app.kubernetes.io/part-of: txplatform
+data:
+  config.yaml: |
+    {{- include "observability.queryConfig" . | nindent 4 }}
+  ui-config.json: |
+    {{- include "observability.uiConfig" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-query
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: jaeger-query
+    app.kubernetes.io/part-of: txplatform
+    app.kubernetes.io/component: tracing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jaeger-query
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jaeger-query
+        app.kubernetes.io/part-of: txplatform
+        app.kubernetes.io/component: tracing
+        txplatform.io/network-identity: jaeger-query
+      annotations:
+        checksum/config: {{ printf "%s%s" (include "observability.queryConfig" .) (include "observability.uiConfig" .) | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: query
+          image: {{ .Values.image }}
+          args: ["--config=/etc/jaeger/config.yaml"]
+          ports:
+            - { name: http, containerPort: 16686 }
+            - { name: grpc, containerPort: 16685 }
+            - { name: health, containerPort: 13133 }
+            - { name: metrics, containerPort: 8888 }
+          resources:
+            {{- toYaml .Values.query.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet: { path: /status, port: health }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /status, port: health }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /status, port: health }
+            periodSeconds: 15
+            failureThreshold: 4
+          volumeMounts:
+            - name: config
+              mountPath: /etc/jaeger
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: jaeger-query-config
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: jaeger-query
+    app.kubernetes.io/part-of: txplatform
+spec:
+  selector:
+    app.kubernetes.io/name: jaeger-query
+  ports:
+    - { name: http, port: 16686, targetPort: http }
+    - { name: grpc, port: 16685, targetPort: grpc }
+    - { name: metrics, port: 8888, targetPort: metrics }

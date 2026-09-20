@@ -1,0 +1,49 @@
+{{- /*
+Namespace-wide baseline: deny all traffic, then let every pod resolve DNS. Each component chart
+adds narrow allow rules for exactly the connections its pods need.
+*/}}
+{{- range .Values.namespaces }}
+{{- if or .networkPolicy.denyIngress .networkPolicy.denyEgress }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .name }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  podSelector: {}
+  policyTypes:
+    {{- if .networkPolicy.denyIngress }}
+    - Ingress
+    {{- end }}
+    {{- if .networkPolicy.denyEgress }}
+    - Egress
+    {{- end }}
+{{- end }}
+{{- if .networkPolicy.denyEgress }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: {{ .name }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+{{- end }}
+{{- end }}

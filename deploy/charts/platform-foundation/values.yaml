@@ -1,0 +1,44 @@
+# Namespace model of the platform.
+# podSecurity.enforce is the Pod Security Admission level Kubernetes rejects pods for;
+# warn/audit only report violations. Every platform namespace uses "restricted", the strictest
+# level: pods must run as non-root, without privilege escalation or extra Linux capabilities.
+# networkPolicy turns on the namespace-wide deny baseline; component charts add allow rules.
+namespaces:
+  - name: gateway-system
+    podSecurity:
+      enforce: restricted
+      warn: restricted
+      audit: restricted
+    networkPolicy:
+      denyIngress: true
+      # The ingress controller must reach the Kubernetes API server, whose address changes with
+      # every cluster, so egress is restricted per workload (Kong proxy) instead of namespace-wide.
+      denyEgress: false
+  - name: transaction-platform
+    # Routes from this namespace may attach to the platform Gateway.
+    gatewayAccess: true
+    podSecurity:
+      enforce: restricted
+      warn: restricted
+      audit: restricted
+    networkPolicy:
+      denyIngress: true
+      denyEgress: true
+  - name: observability
+    podSecurity:
+      enforce: restricted
+      warn: restricted
+      audit: restricted
+    networkPolicy:
+      denyIngress: true
+      denyEgress: true
+
+# Safety net for containers that forget to declare resources. Every chart in this
+# repository sets explicit requests and limits, so these defaults should never apply.
+defaultContainerResources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

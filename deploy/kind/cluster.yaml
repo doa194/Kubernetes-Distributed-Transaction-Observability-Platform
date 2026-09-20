@@ -1,0 +1,25 @@
+# Local Kubernetes cluster used by the whole platform.
+# One control-plane node and two workers make node metadata meaningful and let the
+# two Fraud replicas run on different nodes. The node image comes from versions.yaml.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: txplatform
+networking:
+  # kindnet enforces NetworkPolicies; no extra network plugin is needed.
+  disableDefaultCNI: false
+nodes:
+  - role: control-plane
+    # Host ports can only be added when the cluster is created, so both public
+    # entry points are reserved here even though their components come later.
+    # They listen on loopback only, so nothing is reachable from other machines.
+    extraPortMappings:
+      - containerPort: 30443 # Kong HTTPS proxy NodePort
+        hostPort: 8443
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 31443 # Keycloak HTTPS NodePort
+        hostPort: 9443
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+  - role: worker

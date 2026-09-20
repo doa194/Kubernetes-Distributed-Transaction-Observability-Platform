@@ -1,0 +1,27 @@
+# The last step fails: everything before it must be undone in reverse order.
+schemaVersion: 1
+id: shipping-failure
+title: Shipping failure
+description: >
+  ShippingService answers with HTTP 500 after payment was authorized. Orders fail with 502, the
+  payment is voided and the stock released, in that order. The ledger shows one authorization
+  per order, which was voided.
+category: application-fault
+faults:
+  - service: shipping-service
+    operation: shipping.create
+    mode: http-error
+    statusCode: 500
+    ttlSeconds: 180
+workload:
+  - profile: concurrent
+    requests: 3
+    concurrency: 3
+expect:
+  application:
+    statuses: { 502: { all: true } }
+    states: { ShippingFailed: { all: true } }
+    compensation: [VoidPayment, ReleaseInventory]
+    authorizationsPerOrder: 1
+  telemetry:
+    contract: shipping-failure

@@ -1,0 +1,24 @@
+# A rolling restart of a two-replica service must be invisible to customers.
+schemaVersion: 1
+id: rolling-restart
+title: Rolling restart without errors
+description: >
+  FraudService (two replicas) is restarted with a rolling update during a 60 second workload.
+  Readiness probes, the pre-stop delay and retries must hide the restart completely: every order
+  completes, no error span is recorded, and the traces show traffic moving to the new pods.
+category: kubernetes-fault
+kubernetes:
+  - action: rollout-restart
+    workload: fraud-service
+    atSeconds: 5
+workload:
+  - profile: steady
+    ratePerSecond: 4
+    durationSeconds: 60
+    debug: true
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+  telemetry:
+    contract: rolling-restart

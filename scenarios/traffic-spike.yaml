@@ -1,0 +1,25 @@
+# A short traffic spike: the gateway sheds the excess, the application and the telemetry
+# pipeline keep up.
+schemaVersion: 1
+id: traffic-spike
+title: Traffic spike
+description: >
+  A 60 second workload at 5 requests per second rises to 50 per second for 10 seconds. Kong lets
+  30 per second through and rejects the rest with 429. OrderService records no errors, the
+  Collector neither refuses spans nor decides on incomplete traces, and Jaeger's Monitor tab shows
+  the spike.
+category: workload
+workload:
+  - profile: spike
+    ratePerSecond: 5
+    durationSeconds: 60
+    spikeRatePerSecond: 50
+    spikeSeconds: 10
+expect:
+  application:
+    statuses:
+      201: { min: 450 }
+      429: { min: 100, max: 300 }
+    states: { Completed: { min: 450 } }
+  telemetry:
+    contract: traffic-spike

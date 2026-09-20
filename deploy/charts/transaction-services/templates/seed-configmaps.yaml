@@ -1,0 +1,16 @@
+{{- /* Seed data (catalog prices, stock levels) as configuration instead of code changes. */}}
+{{- range $name, $seed := .Values.seed }}
+{{- if $seed }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-seed
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/part-of: txplatform
+data:
+  seed.json: {{ $seed | toJson | quote }}
+{{- end }}
+{{- end }}

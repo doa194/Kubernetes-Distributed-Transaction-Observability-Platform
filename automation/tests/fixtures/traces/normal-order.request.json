@@ -1,0 +1,18 @@
+{
+ "request": {
+  "step": 0,
+  "sequence": 0,
+  "label": "",
+  "planned_offset": 0.0,
+  "started_at": 95075.5880375,
+  "duration_ms": 348.31830000621267,
+  "status": 201,
+  "correlation_id": "20260917T153933Z-normal-order-d3dd-0-00000",
+  "kong_request_id": "0042fd56422cfd1d2d01c74947beff0f",
+  "trace_id": "89156c7c0859649183f5462b16b0e110",
+  "order_id": "01a0b006-109e-7c0a-9da4-59f33ae79a29",
+  "state": "Completed",
+  "error": ""
+ },
+ "run_id": "20260917T153933Z-normal-order-d3dd"
+}

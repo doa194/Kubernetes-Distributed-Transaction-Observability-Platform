@@ -1,0 +1,23 @@
+# Generated on each workstation: local CA, certificates and scenario run records
+.local/
+.runs/
+
+# Tool binaries downloaded into the project instead of being installed system-wide
+.tools/
+
+# .NET build output
+bin/
+obj/
+TestResults/
+*.user
+.vs/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editors
+.idea/
+.vscode/

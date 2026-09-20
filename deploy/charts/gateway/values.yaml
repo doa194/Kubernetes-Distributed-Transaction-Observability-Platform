@@ -1,0 +1,15 @@
+gatewayClassName: kong
+gatewayName: platform-gateway
+# TLS Secret created by platformctl from the local CA.
+tlsSecretName: edge-tls
+environment: local
+
+# Namespaces allowed to attach routes carry this label (set by the platform-foundation chart).
+routeNamespaceLabel:
+  txplatform.io/gateway-access: "true"
+
+opentelemetry:
+  tracesEndpoint: http://jaeger-collector.observability.svc.cluster.local:4318/v1/traces
+  serviceName: kong-gateway
+  kongVersion: "3.9.3"
+  deploymentName: kong-gateway

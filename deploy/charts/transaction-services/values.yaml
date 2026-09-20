@@ -1,0 +1,90 @@
+# Defaults are production-safe: fault injection is off. deploy/values/local/transaction-services.yaml
+# turns on local-only features. Image tags are set by platformctl from each service's content hash.
+environment: production
+
+image:
+  repository: txplatform
+  # Images are built locally and loaded into kind; they must never be pulled from a registry.
+  pullPolicy: Never
+
+ports:
+  business: 8080
+  management: 8081
+
+faults:
+  enabled: false
+
+# Token validation settings for OrderService.
+auth:
+  # Must equal the "iss" claim Keycloak writes, i.e. its public URL plus the realm path.
+  issuer: https://localhost:9443/realms/transaction-platform
+  audience: order-api
+  # In-cluster address used to download signing keys.
+  metadataAddress: http://keycloak:8080/realms/transaction-platform/.well-known/openid-configuration
+  requireHttpsMetadata: false
+
+telemetry:
+  enabled: false
+  otlpEndpoint: http://jaeger-collector.observability.svc.cluster.local:4317
+
+# Public route through the Kong Gateway (only OrderService is exposed).
+edge:
+  enabled: false
+  gatewayName: platform-gateway
+  gatewayNamespace: gateway-system
+  rateLimit:
+    perSecond: 30
+    perMinute: 1500
+  maxRequestKilobytes: 16
+  # Kong must never retry order creation itself, and must wait longer than OrderService's 12 s transaction budget.
+  upstreamRetries: 0
+  upstreamTimeoutMs: 15000
+
+# OrderService trusts X-Forwarded-For/Proto only from this network (the kind pod network, where Kong runs).
+forwardedHeaders:
+  trustedNetwork: 10.244.0.0/16
+
+# How long a pod keeps serving after Kubernetes asks it to stop; see preStopSleepSeconds.
+terminationGracePeriodSeconds: 30
+# Gives Kubernetes time to remove the pod from Service endpoints before shutdown starts.
+preStopSleepSeconds: 5
+
+services:
+  order-service:
+    tag: dev
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: "1", memory: 256Mi }
+  inventory-service:
+    tag: dev
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 96Mi }
+      limits: { cpu: 500m, memory: 192Mi }
+  fraud-service:
+    tag: dev
+    # Stateless, so it can run several replicas; they are spread across nodes.
+    replicas: 2
+    spreadAcrossNodes: true
+    resources:
+      requests: { cpu: 50m, memory: 96Mi }
+      limits: { cpu: 500m, memory: 192Mi }
+  payment-service:
+    tag: dev
+    # Keeps idempotency records in memory, so it must run exactly one replica.
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 96Mi }
+      limits: { cpu: 500m, memory: 192Mi }
+  shipping-service:
+    tag: dev
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 96Mi }
+      limits: { cpu: 500m, memory: 192Mi }
+
+# Seed data mounted as /etc/txplatform/seed.json. Empty means the service uses its built-in defaults.
+seed:
+  order-service: {}
+  inventory-service: {}

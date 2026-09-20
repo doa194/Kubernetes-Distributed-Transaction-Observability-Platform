@@ -1,0 +1,6 @@
+apiVersion: v2
+name: identity
+description: Local Keycloak identity provider with the transaction-platform realm imported at startup.
+type: application
+version: 1.0.0
+appVersion: "26.7.4"

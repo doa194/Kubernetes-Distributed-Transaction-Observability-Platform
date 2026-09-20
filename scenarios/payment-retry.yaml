@@ -1,0 +1,31 @@
+# The first payment attempt succeeds but its reply is lost (it arrives after the caller's timeout).
+# The retry must not charge the customer twice.
+schemaVersion: 1
+id: payment-retry
+title: Payment retry after a lost reply
+description: >
+  PaymentService records the authorization and then delays its reply by 2 seconds, longer than
+  OrderService's 1.5 second attempt timeout. OrderService retries with the same Idempotency-Key and
+  receives the stored answer. Every order completes with exactly one authorization, and the trace
+  shows both attempts and the idempotent replay.
+category: application-fault
+faults:
+  - service: payment-service
+    operation: payment.authorize
+    mode: latency
+    delayMs: 2000
+    # After the authorization is stored: the effect happened, only the reply is late.
+    phase: after-effect
+    ttlSeconds: 180
+workload:
+  # Few calls, so the payment circuit breaker (at least 10 calls) cannot open during the run.
+  - profile: concurrent
+    requests: 4
+    concurrency: 2
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+    authorizationsPerOrder: 1
+  telemetry:
+    contract: payment-retry

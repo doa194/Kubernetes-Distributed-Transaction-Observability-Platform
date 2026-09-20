@@ -1,0 +1,46 @@
+# Jaeger v2 in two separately deployed roles on the same image:
+# the Collector ingests spans, the Query service serves the API and UI. Both use OpenSearch.
+image: jaegertracing/jaeger:2.21.0
+indexCleanerImage: jaegertracing/jaeger-es-index-cleaner:2.21.0
+
+openSearchUrl: http://opensearch-traces.observability.svc.cluster.local:9200
+# Jaeger Query reads the span metrics for its Monitor tab from here.
+prometheusUrl: http://prometheus-server.observability.svc.cluster.local:9090
+# Index names start with this prefix, e.g. txplatform-jaeger-span-2026-09-17.
+indexPrefix: txplatform
+# Short local retention: indices older than this many days are deleted every night.
+retentionDays: 2
+
+collector:
+  resources:
+    requests: { cpu: 200m, memory: 384Mi }
+    limits: { cpu: "1", memory: 768Mi }
+  sampling:
+    # How long the Collector waits for the spans of a trace before deciding whether to store it.
+    decisionWait: 20s
+    maxTracesInMemory: 20000
+    expectedNewTracesPerSecond: 100
+    # Trace ids whose decision is remembered, so late spans follow the decision of their trace.
+    decisionCacheSize: 50000
+    # Traces at least this long (first span start to last span end) are always stored.
+    slowThresholdMs: 1000
+    # Share of ordinary traces (no error, not slow, no debug flag) that is stored.
+    baselinePercentage: 25
+  spanMetrics:
+    cardinalityLimit: 2000
+
+query:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+# Workloads allowed to send spans to the Collector.
+otlpProducers:
+  # OTLP/gRPC from the .NET services.
+  grpc:
+    namespace: transaction-platform
+    identities: [order-service, inventory-service, fraud-service, payment-service, shipping-service]
+  # OTLP/HTTP from the Kong proxy (Kong's plugin only speaks OTLP/HTTP).
+  http:
+    namespace: gateway-system
+    identities: [kong-proxy]

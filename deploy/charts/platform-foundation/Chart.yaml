@@ -1,0 +1,6 @@
+apiVersion: v2
+name: platform-foundation
+description: Namespaces, Pod Security levels and default resource limits shared by every platform component.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared helpers for component and integration tests: in-memory service hosts,
+       order request builders and fault-rule helpers. -->
+  <PropertyGroup>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ServiceDefaults\ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\OrderService\OrderService.csproj" />
+    <ProjectReference Include="..\..\src\InventoryService\InventoryService.csproj" />
+    <ProjectReference Include="..\..\src\FraudService\FraudService.csproj" />
+    <ProjectReference Include="..\..\src\PaymentService\PaymentService.csproj" />
+    <ProjectReference Include="..\..\src\ShippingService\ShippingService.csproj" />
+  </ItemGroup>
+</Project>

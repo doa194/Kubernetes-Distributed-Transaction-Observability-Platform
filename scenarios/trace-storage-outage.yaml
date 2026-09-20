@@ -1,0 +1,31 @@
+# Trace storage fails for about a minute: nothing is lost, traces only arrive late.
+schemaVersion: 1
+id: trace-storage-outage
+title: Trace storage outage
+description: >
+  OpenSearch is scaled to zero while orders are traced, then started again. Orders complete
+  without any impact. The Collector keeps the spans it cannot write and retries with growing
+  pauses, so once OpenSearch is back every trace from the outage is stored completely.
+category: kubernetes-fault
+kubernetes:
+  - action: scale
+    workload: opensearch-traces
+    replicas: 0
+    restoreAfterSeconds: 50
+workload:
+  # Starts once the OpenSearch pod has stopped and ends before it is started again.
+  - profile: steady
+    ratePerSecond: 1
+    durationSeconds: 15
+    delaySeconds: 25
+    debug: true
+    label: during-outage
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+  telemetry:
+    contract: trace-storage-outage
+    parameters:
+      # OpenSearch needs up to a minute to start; retries then deliver within their 30 s pause.
+      deliveryTimeoutSeconds: 180

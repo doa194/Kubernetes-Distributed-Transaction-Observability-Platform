@@ -1,0 +1,30 @@
+# A dependency with no running replica. Because the namespace denies all egress that is not
+# explicitly allowed, connections to a Service without endpoints are silently dropped, not refused:
+# the failure looks like a timeout.
+schemaVersion: 1
+id: dependency-unavailable
+title: Dependency unavailable
+description: >
+  ShippingService is scaled to zero replicas. OrderService's connection attempts get no answer, so
+  each of the three attempts runs into its 1 second timeout and the orders fail with 504 after about
+  3.5 seconds. Payment is voided and stock released. The traces show three attempts and no
+  ShippingService spans. The replica count is restored afterwards.
+category: kubernetes-fault
+kubernetes:
+  - action: scale
+    workload: shipping-service
+    replicas: 0
+workload:
+  - profile: concurrent
+    requests: 3
+    concurrency: 1
+    # Gives Kubernetes time to remove the endpoint and the old pod time to close its connections.
+    delaySeconds: 12
+expect:
+  application:
+    statuses: { 504: { all: true } }
+    states: { ShippingFailed: { all: true } }
+    compensation: [VoidPayment, ReleaseInventory]
+    authorizationsPerOrder: 1
+  telemetry:
+    contract: dependency-unavailable

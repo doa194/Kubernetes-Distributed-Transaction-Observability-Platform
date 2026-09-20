@@ -1,0 +1,19 @@
+# Keycloak for local, standards-based authentication (OAuth 2.0 client credentials, JWT).
+image: quay.io/keycloak/keycloak:26.7.4
+
+# The URL clients use to reach Keycloak. It becomes the "iss" claim of every token.
+publicUrl: https://localhost:9443
+realm: transaction-platform
+
+# Host port 9443 is mapped to this NodePort by the kind cluster definition.
+nodePort: 31443
+
+# Existing Secrets created by platformctl; the chart never contains secret values.
+secrets:
+  admin: keycloak-admin
+  clients: keycloak-clients
+  tls: keycloak-tls
+
+resources:
+  requests: { cpu: 250m, memory: 768Mi }
+  limits: { cpu: 1500m, memory: 1Gi }

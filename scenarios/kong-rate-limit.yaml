@@ -1,0 +1,21 @@
+# The gateway rejects excess traffic before it reaches the application.
+schemaVersion: 1
+id: kong-rate-limit
+title: Gateway rate limit
+description: >
+  120 simultaneous orders exceed Kong's limit of 30 requests per second per client. Kong answers
+  the excess with 429 without contacting OrderService. Even though most rejected requests are not
+  kept as traces, span metrics count every one of them.
+category: edge
+workload:
+  # Even if the burst spreads over three one-second windows, at most 90 requests can pass.
+  - profile: burst
+    requests: 120
+expect:
+  application:
+    statuses:
+      201: { min: 30, max: 90 }
+      429: { min: 30, max: 90 }
+    states: { Completed: { min: 30, max: 90 } }
+  telemetry:
+    contract: kong-rate-limit

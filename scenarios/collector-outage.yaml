@@ -1,0 +1,42 @@
+# The trace pipeline itself fails: business traffic must not notice, and tracing must recover.
+schemaVersion: 1
+id: collector-outage
+title: Trace collector outage
+description: >
+  The Jaeger Collector is scaled to zero between two phases of steady traffic and brought back
+  afterwards. Every order completes regardless. The services do not buffer spans they cannot
+  export, so the traces of requests made during the outage are lost, while traces before the
+  outage and after the Collector is back are complete.
+category: kubernetes-fault
+kubernetes:
+  - action: scale
+    workload: jaeger-collector
+    replicas: 0
+    atSeconds: 15
+    restoreAfterSeconds: 45
+workload:
+  - profile: steady
+    ratePerSecond: 1
+    durationSeconds: 10
+    debug: true
+    label: before-outage
+  # Starts at about 25 s, when the Collector pod is gone; ends at about 45 s, before it returns at 60 s.
+  - profile: steady
+    ratePerSecond: 1
+    durationSeconds: 20
+    delaySeconds: 15
+    debug: true
+    label: during-outage
+  # Starts at about 80 s, when the Collector is ready again.
+  - profile: steady
+    ratePerSecond: 1
+    durationSeconds: 10
+    delaySeconds: 35
+    debug: true
+    label: after-recovery
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+  telemetry:
+    contract: collector-outage

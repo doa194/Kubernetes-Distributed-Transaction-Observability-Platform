@@ -1,0 +1,32 @@
+# Only one replica is slow: traces must attribute the latency to that pod, not to the service.
+schemaVersion: 1
+id: replica-degradation
+title: One degraded replica
+description: >
+  One of the two FraudService pods adds 400 ms to every evaluation, which stays below the 700 ms
+  attempt timeout. Orders complete, and the kept traces show slow Fraud spans only from the
+  degraded pod while the healthy pod stays fast.
+category: kubernetes-fault
+faults:
+  - service: fraud-service
+    operation: fraud.evaluate
+    mode: latency
+    delayMs: 400
+    replicas: one
+    ttlSeconds: 300
+workload:
+  # One burst, just below the gateway's limit of 30 requests per second. Every request is in flight
+  # at the same time, so OrderService opens one connection per request and both Fraud replicas
+  # receive traffic. A slow, steady rate would keep a single pooled connection, which could stay on
+  # the healthy pod for the whole run and prove nothing.
+  - profile: burst
+    requests: 25
+    debug: true
+expect:
+  application:
+    statuses: { 201: { all: true } }
+    states: { Completed: { all: true } }
+  telemetry:
+    contract: replica-degradation
+    parameters:
+      slowSpanMs: 350

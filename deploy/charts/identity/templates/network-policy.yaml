@@ -1,0 +1,27 @@
+{{- /*
+Keycloak's public HTTPS port is the intended entry point for token requests, so any source may
+reach it (external traffic arrives from node addresses through the NodePort). The internal HTTP
+port serves signing keys and is reachable only from OrderService.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: txplatform
+spec:
+  podSelector:
+    matchLabels:
+      txplatform.io/network-identity: keycloak
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: https
+    - from:
+        - podSelector:
+            matchLabels:
+              txplatform.io/network-identity: order-service
+      ports:
+        - port: http

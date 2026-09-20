@@ -1,0 +1,13 @@
+<Project>
+  <!-- Test projects inherit the repository build settings. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- Lets `dotnet test` run these projects through the Microsoft Testing Platform runner
+         (the runner is selected in global.json); without it no tests are discovered. -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <!-- xUnit1051 asks every call to pass the test cancellation token; tests here are short and
+         bounded by their own timeouts, so the rule adds noise without protecting behavior. -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+</Project>

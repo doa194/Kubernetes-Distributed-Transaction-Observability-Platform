@@ -1,0 +1,57 @@
+{{- /*
+Gateway namespace rules. The namespace denies all ingress by default; these policies open only:
+- the HTTPS proxy port to any source (it is the public entry point),
+- Kong's Admin API to the ingress controller,
+and restrict the proxy's outbound traffic to OrderService, the Collector's OTLP/HTTP port and DNS.
+The controller keeps unrestricted egress because it must reach the Kubernetes API server.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kong-proxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/part-of: txplatform
+spec:
+  podSelector:
+    matchLabels:
+      txplatform.io/network-identity: kong-proxy
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - port: 8443
+    - from:
+        - podSelector:
+            matchLabels:
+              txplatform.io/network-identity: kong-controller
+      ports:
+        - port: 8444
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: transaction-platform
+          podSelector:
+            matchLabels:
+              txplatform.io/network-identity: order-service
+      ports:
+        - port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              txplatform.io/network-identity: jaeger-collector
+      ports:
+        - port: 4318
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
